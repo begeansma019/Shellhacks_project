@@ -207,6 +207,17 @@ class QuadrantRiskCard(ft.Container):
 
                 ft.Container(height=12),
 
+                ft.Container(
+                    width=356,
+                    padding=ft.Padding.only(bottom=8),
+                    content=ft.Text(
+                        "Main Tasks",
+                        size=14,
+                        weight=ft.FontWeight.W_600,
+                        color=PRIMARY_TEXT,
+                    ),
+                ),
+
                 # =================================================
                 # LEGEND
                 # =================================================
