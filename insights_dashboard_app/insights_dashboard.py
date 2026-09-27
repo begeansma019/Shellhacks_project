@@ -1,5 +1,4 @@
 import asyncio
-import hashlib
 import os
 from importlib import import_module
 from pathlib import Path
@@ -34,6 +33,26 @@ SKILLS_CARD_HEIGHT = 320
 METRIC_CARD_HEIGHT = 140
 METRIC_GREEN = "#18D66B"
 METRIC_RED = "#FF4D4D"
+
+# Scenario assumptions for the replacement-economics model.
+# Gemini 3.8 Flash paid-tier token rates shown here are the
+# introductory rates through 2026-12-31. Other cost inputs are
+# explicit planning assumptions, not measured production costs.
+WORK_HOURS_PER_YEAR = 2080
+
+GEMINI_INPUT_PRICE_PER_MILLION = 0.75
+GEMINI_OUTPUT_PRICE_PER_MILLION = 3.75
+
+ASSUMED_INPUT_TOKENS_PER_AUTOMATED_HOUR = 20_000
+ASSUMED_OUTPUT_TOKENS_PER_AUTOMATED_HOUR = 5_000
+
+ASSUMED_SOFTWARE_INFRA_ANNUAL = 3_000
+ASSUMED_HUMAN_OVERSIGHT_SHARE = 0.10
+
+ASSUMED_IMPLEMENTATION_COST = 20_000
+ASSUMED_IMPLEMENTATION_USEFUL_LIFE_YEARS = 3
+ASSUMED_MAINTENANCE_RATE = 0.10
+
 SEARCH_ICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search preview-icon"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>"""
 CLOSE_ICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x preview-icon"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>"""
 LOCAL_ENV_PATH = Path(__file__).with_name(".env")
@@ -198,7 +217,7 @@ def build_occupation_row(
             page.update()
             await asyncio.gather(
                 economics_row.set_occupation(
-                    occupation["title"],
+                    None,
                     None,
                 ),
                 market_card.animate_current_value(),
@@ -221,6 +240,7 @@ def build_occupation_row(
         except GeminiRiskServiceError:
             risk_prediction = {
                 "risk_score": 0,
+                "realizable_automation_share": None,
                 "tasks": [
                     {
                         "task": "Gemini analysis unavailable",
@@ -244,8 +264,10 @@ def build_occupation_row(
             ),
             risk_card.animate_tasks(),
             economics_row.set_occupation(
-                occupation_data["title"],
                 latest_median_wage,
+                risk_prediction.get(
+                    "realizable_automation_share"
+                ),
             ),
             market_card.animate_current_value(),
         )
@@ -381,41 +403,147 @@ def build_occupation_row(
 
 
 def occupation_economics_values(
-    occupation: str,
-    labor_value: int | None,
+    median_wage: int | None,
+    automation_share_percent: float | int | None,
 ):
-    if labor_value is None:
+    if (
+        median_wage is None
+        or automation_share_percent is None
+    ):
         return (
             ("—", "—", "—", "—", "—"),
-            "Median wage unavailable",
+            "Automation estimate unavailable",
         )
 
-    digest = hashlib.sha256(
-        f"economics:{occupation}".encode("utf-8")
-    ).digest()
-    ratio_tenths = (
-        250
-        + int.from_bytes(digest[2:4], "big") % 451
+    automation_share = max(
+        0.0,
+        min(
+            100.0,
+            float(automation_share_percent),
+        ),
+    ) / 100.0
+    labor_value_replaced = (
+        float(median_wage)
+        * automation_share
     )
-    annual_ai_cost = round(
-        labor_value * ratio_tenths / 1_000
+    automated_hours = (
+        WORK_HOURS_PER_YEAR
+        * automation_share
     )
-    annual_savings = labor_value - annual_ai_cost
-    payback_tenths = (
-        25
-        + int.from_bytes(digest[4:6], "big") % 65
+    annual_input_tokens = (
+        automated_hours
+        * ASSUMED_INPUT_TOKENS_PER_AUTOMATED_HOUR
     )
-    replacement_ratio = ratio_tenths / 10
+    annual_output_tokens = (
+        automated_hours
+        * ASSUMED_OUTPUT_TOKENS_PER_AUTOMATED_HOUR
+    )
+    annual_model_cost = (
+        annual_input_tokens
+        / 1_000_000
+        * GEMINI_INPUT_PRICE_PER_MILLION
+        + annual_output_tokens
+        / 1_000_000
+        * GEMINI_OUTPUT_PRICE_PER_MILLION
+    )
+    median_hourly_wage = (
+        float(median_wage)
+        / WORK_HOURS_PER_YEAR
+    )
+    annual_oversight_cost = (
+        automated_hours
+        * ASSUMED_HUMAN_OVERSIGHT_SHARE
+        * median_hourly_wage
+    )
+    annual_software_infra_cost = (
+        ASSUMED_SOFTWARE_INFRA_ANNUAL
+    )
+    annual_maintenance_cost = (
+        ASSUMED_IMPLEMENTATION_COST
+        * ASSUMED_MAINTENANCE_RATE
+    )
+    annualized_implementation_cost = (
+        ASSUMED_IMPLEMENTATION_COST
+        / ASSUMED_IMPLEMENTATION_USEFUL_LIFE_YEARS
+    )
+    annual_recurring_ai_cost = (
+        annual_model_cost
+        + annual_software_infra_cost
+        + annual_oversight_cost
+        + annual_maintenance_cost
+    )
+    annual_ai_cost = (
+        annual_recurring_ai_cost
+        + annualized_implementation_cost
+    )
+    annual_savings = (
+        labor_value_replaced
+        - annual_ai_cost
+    )
+    replacement_ratio = (
+        annual_ai_cost
+        / labor_value_replaced
+        * 100
+        if labor_value_replaced > 0
+        else None
+    )
+    annual_recurring_savings = (
+        labor_value_replaced
+        - annual_recurring_ai_cost
+    )
+    if annual_recurring_savings > 0:
+        monthly_recurring_savings = (
+            annual_recurring_savings / 12
+        )
+        payback_months = (
+            ASSUMED_IMPLEMENTATION_COST
+            / monthly_recurring_savings
+        )
+    else:
+        payback_months = None
+
+    labor_display = f"${labor_value_replaced:,.0f}"
+    ai_cost_display = f"-${annual_ai_cost:,.0f}"
+    if annual_savings > 0:
+        savings_display = f"+${annual_savings:,.0f}"
+    elif annual_savings < 0:
+        savings_display = f"-${abs(annual_savings):,.0f}"
+    else:
+        savings_display = "$0"
+
+    if replacement_ratio is None:
+        ratio_display = "—"
+        ratio_description = "No replaced labor value"
+    else:
+        ratio_display = f"{replacement_ratio:.1f}%"
+        if replacement_ratio < 100:
+            ratio_description = (
+                f"{100 - replacement_ratio:.1f}% below "
+                "replaced labor value"
+            )
+        elif replacement_ratio > 100:
+            ratio_description = (
+                f"{replacement_ratio - 100:.1f}% above "
+                "replaced labor value"
+            )
+        else:
+            ratio_description = "Equal to replaced labor value"
+
+    payback_display = (
+        f"{payback_months:.1f} months"
+        if payback_months is not None
+        else "No Payback"
+    )
 
     return (
         (
-            f"${labor_value:,.0f}",
-            f"-${annual_ai_cost:,.0f}",
-            f"+${annual_savings:,.0f}",
-            f"{replacement_ratio:.1f}%",
-            f"{payback_tenths / 10:.1f} months",
+            labor_display,
+            ai_cost_display,
+            savings_display,
+            ratio_display,
+            payback_display,
         ),
-        f"{100 - replacement_ratio:.1f}% below labor cost",
+        ratio_description,
     )
 
 
@@ -510,13 +638,13 @@ class EconomicsMetricsRow:
 
     async def set_occupation(
         self,
-        occupation: str,
         median_wage: int | None,
+        automation_share_percent: float | int | None,
     ):
         display_values, ratio_description = (
             occupation_economics_values(
-                occupation,
                 median_wage,
+                automation_share_percent,
             )
         )
         ratio_description_control = (

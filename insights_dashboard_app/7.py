@@ -220,7 +220,7 @@ def main(page: ft.Page):
     labor_replaced_card = metric_card(
         title="Labor Value Replaced",
         value=money(labor_value_replaced),
-        description="Median salary × replacement percentage",
+        description="Median wage × realizable automation share",
         value_color=TEXT_PRIMARY,
         indicator_color=TEXT_MUTED,
     )
@@ -235,7 +235,10 @@ def main(page: ft.Page):
     ai_cost_card = metric_card(
         title="Annual AI Cost",
         value=f"-${annual_ai_cost:,.0f}",
-        description="Operating cost + annualized implementation",
+        description=(
+            "API + software + oversight + maintenance "
+            "+ annualized implementation"
+        ),
         value_color=RED,
         indicator_color=RED,
     )
@@ -301,7 +304,7 @@ def main(page: ft.Page):
         payback_value = f"{payback_months:.1f} months"
         payback_color = GREEN
         payback_description = (
-            "Time required to recover implementation cost"
+            "Upfront implementation ÷ monthly recurring savings"
         )
 
     else:
@@ -309,7 +312,7 @@ def main(page: ft.Page):
         payback_value = "No Payback"
         payback_color = RED
         payback_description = (
-            "AI operating cost exceeds replaced labor value"
+            "Recurring AI cost meets or exceeds replaced labor value"
         )
 
     payback_card = metric_card(

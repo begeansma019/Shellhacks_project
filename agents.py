@@ -133,9 +133,18 @@ async def run_risk_prediction(
         return normalized_tasks[:4]
 
     def microsoft_fallback() -> dict:
+        fallback_tasks = normalize_tasks([])
+        fallback_share = clamp_score(
+            sum(
+                task["probability"]
+                for task in fallback_tasks
+            )
+            / len(fallback_tasks)
+        )
         return {
             "risk_score": clamp_score(round(ms_score)),
-            "tasks": normalize_tasks([]),
+            "realizable_automation_share": fallback_share,
+            "tasks": fallback_tasks,
             "source": "microsoft_fallback",
         }
 
@@ -144,6 +153,11 @@ async def run_risk_prediction(
         "additionalProperties": False,
         "properties": {
             "risk_score": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100,
+            },
+            "realizable_automation_share": {
                 "type": "integer",
                 "minimum": 0,
                 "maximum": 100,
@@ -172,7 +186,11 @@ async def run_risk_prediction(
                 },
             },
         },
-        "required": ["risk_score", "tasks"],
+        "required": [
+            "risk_score",
+            "realizable_automation_share",
+            "tasks",
+        ],
     }
 
     instruction = (
@@ -180,6 +198,12 @@ async def run_risk_prediction(
         "Use the occupation, Microsoft AI Applicability Score, "
         "and seed task evidence to estimate occupational AI risk. "
         "The Microsoft score is evidence, not the final risk score. "
+        "Also estimate realizable_automation_share from 0-100: the "
+        "realistic share of annual occupational work effort that "
+        "current AI could automate under human oversight. This is "
+        "distinct from risk_score and should reflect task feasibility, "
+        "workflow constraints, and remaining human work. Do not "
+        "interpret a 70 risk score as 70% labor replacement. "
         "Return exactly four occupation-specific tasks. "
         "Keep task names concise and each justification to one short "
         "sentence of no more than about 18 words. "
@@ -209,6 +233,9 @@ async def run_risk_prediction(
         prediction = json.loads(response.text)
         return {
             "risk_score": clamp_score(prediction["risk_score"]),
+            "realizable_automation_share": clamp_score(
+                prediction["realizable_automation_share"]
+            ),
             "tasks": normalize_tasks(prediction["tasks"]),
             "source": "gemini",
         }
