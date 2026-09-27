@@ -58,8 +58,8 @@ class QuadrantRiskCard(ft.Container):
 
     def __init__(
         self,
-        score: int = 393,
-        max_score: int = 600,
+        score: int = 0,
+        max_score: int = 100,
         show_title: bool = True,
     ):
         super().__init__()
@@ -504,7 +504,7 @@ class QuadrantRiskCard(ft.Container):
                     ),
 
                     # The gradient itself represents the
-                    # complete 0 -> 600 risk spectrum.
+                    # complete 0 -> 100 risk spectrum.
                     start_angle=math.pi,
                     end_angle=math.pi * 2,
 
@@ -1014,8 +1014,8 @@ def main(page: ft.Page):
     page.add(
 
         QuadrantRiskCard(
-            score=393,
-            max_score=600,
+            score=65,
+            max_score=100,
         )
     )
 

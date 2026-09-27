@@ -99,7 +99,7 @@ def occupation_risk_score(name: str) -> int:
         position * ord(character)
         for position, character in enumerate(name, start=1)
     )
-    return 100 + weighted_name % 501
+    return weighted_name % 101
 
 
 class _CardCapturePage:
@@ -350,8 +350,8 @@ def build_risk_card():
     risk_module = import_module("56")
 
     return risk_module.QuadrantRiskCard(
-        score=393,
-        max_score=600,
+        score=0,
+        max_score=100,
     )
 
 
