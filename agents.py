@@ -77,7 +77,7 @@ def run_full_pipeline(client: genai.Client, model: str, job_title: str, context:
         raise e
 
 
-def run_risk_prediction(
+async def run_risk_prediction(
     client: genai.Client,
     model: str,
     job_title: str,
@@ -135,26 +135,33 @@ def run_risk_prediction(
     def microsoft_fallback() -> dict:
         return {
             "risk_score": clamp_score(round(ms_score)),
-            "summary": (
-                "Gemini was temporarily unavailable; Microsoft "
-                "applicability data is being shown."
-            ),
             "tasks": normalize_tasks([]),
             "source": "microsoft_fallback",
         }
 
     response_schema = {
         "type": "object",
+        "additionalProperties": False,
         "properties": {
-            "risk_score": {"type": "integer"},
-            "summary": {"type": "string"},
+            "risk_score": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100,
+            },
             "tasks": {
                 "type": "array",
+                "minItems": 4,
+                "maxItems": 4,
                 "items": {
                     "type": "object",
+                    "additionalProperties": False,
                     "properties": {
                         "task": {"type": "string"},
-                        "probability": {"type": "integer"},
+                        "probability": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 100,
+                        },
                         "justification": {"type": "string"},
                     },
                     "required": [
@@ -165,49 +172,43 @@ def run_risk_prediction(
                 },
             },
         },
-        "required": ["risk_score", "summary", "tasks"],
+        "required": ["risk_score", "tasks"],
     }
 
     instruction = (
-        "You are WorkLens's occupational AI-risk analyst. Use the "
-        "selected O*NET occupation, Microsoft AI Applicability Score, "
-        "supporting task context, and optional O*NET context to produce "
-        "the prediction. The Microsoft score is empirical evidence of "
-        "generative-AI applicability, not automatically the final risk "
-        "score. Return one overall integer risk_score from 0 to 100 and "
-        "exactly four occupation-specific tasks. Each task must include "
-        "an integer AI-risk probability from 0 to 100 and a concise "
-        "justification. Use no other dataset. Do not output Markdown. "
-        "Return structured JSON only."
+        "You are WorkLens, an occupational AI-risk analyst. "
+        "Use the occupation, Microsoft AI Applicability Score, "
+        "and seed task evidence to estimate occupational AI risk. "
+        "The Microsoft score is evidence, not the final risk score. "
+        "Return exactly four occupation-specific tasks. "
+        "Keep task names concise and each justification to one short "
+        "sentence of no more than about 18 words. "
+        "Use no other dataset. Return only the required JSON."
     )
     prompt = (
         f"Occupation: {job_title}\n"
-        f"Microsoft AI Applicability Score: {ms_score} / 100\n\n"
-        f"Supporting task context:\n"
-        f"{json.dumps(tasks[:4], ensure_ascii=False)}\n\n"
-        f"O*NET context:\n{context.strip() or 'None'}"
+        f"Microsoft applicability: {ms_score}/100\n"
+        f"Seed tasks: {json.dumps(tasks[:4], ensure_ascii=False)}"
     )
+    if context.strip():
+        prompt += f"\nContext: {context.strip()}"
 
     try:
-        response = client.models.generate_content(
+        response = await client.aio.models.generate_content(
             model=model.replace("models/", "").strip(),
             contents=prompt,
             config=genai.types.GenerateContentConfig(
                 system_instruction=instruction,
                 response_mime_type="application/json",
-                response_schema=response_schema,
-                temperature=0.2,
-                automatic_function_calling=(
-                    genai.types.AutomaticFunctionCallingConfig(
-                        disable=True,
-                    )
+                response_json_schema=response_schema,
+                thinking_config=genai.types.ThinkingConfig(
+                    thinking_level="low",
                 ),
             ),
         )
         prediction = json.loads(response.text)
         return {
             "risk_score": clamp_score(prediction["risk_score"]),
-            "summary": str(prediction.get("summary", "")).strip(),
             "tasks": normalize_tasks(prediction["tasks"]),
             "source": "gemini",
         }

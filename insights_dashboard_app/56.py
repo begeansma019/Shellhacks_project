@@ -40,13 +40,13 @@ GAUGE_REMAINDER = "#353538"
 # ANIMATION SETTINGS
 # ============================================================
 
-ANIMATION_DURATION = 1.6
-ANIMATION_FPS = 60
-ANIMATION_START_DELAY = 0.10
+ANIMATION_DURATION = 0.65
+ANIMATION_FPS = 30
+ANIMATION_START_DELAY = 0.02
 
-TASK_FADE_DURATION = 500
-TASK_DIVIDER_DURATION = 500
-TASK_SECTION_DELAY = 0.35
+TASK_FADE_DURATION = 180
+TASK_DIVIDER_DURATION = 180
+TASK_SECTION_DELAY = 0.06
 TASK_DIVIDER_WIDTH = 356
 
 
@@ -934,7 +934,7 @@ class QuadrantRiskCard(ft.Container):
                 divider.width = 0
 
         self.page.update()
-        await asyncio.sleep(0.04)
+        await asyncio.sleep(0.02)
 
         if generation != self._task_animation_generation:
             return
@@ -952,7 +952,7 @@ class QuadrantRiskCard(ft.Container):
                 )
 
         self.page.update()
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.03)
 
         for row, divider in self._task_animation_sequence:
             if generation != self._task_animation_generation:

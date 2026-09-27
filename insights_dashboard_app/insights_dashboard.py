@@ -172,12 +172,20 @@ def build_occupation_row(
         selected_chip.content.weight = ft.FontWeight.W_500
 
     async def update_occupation_content(occupation: dict[str, str]):
+        risk_task = asyncio.create_task(
+            gemini_risk_service.analyze_occupation(
+                occupation["title"],
+            )
+        )
+
         try:
             occupation_data = await occupation_service.get_occupation(
                 occupation["code"],
                 occupation["title"],
             )
         except (OnetServiceError, OewsDataError, ValueError):
+            if not risk_task.done():
+                risk_task.cancel()
             skills_card.set_message(
                 "Unable to load occupation data. Please try again."
             )
@@ -203,24 +211,8 @@ def build_occupation_row(
             else None
         )
 
-        skill_names = [
-            skill["name"]
-            for skill in occupation_data["skills"]
-            if isinstance(skill.get("name"), str)
-        ]
-        gemini_context = (
-            "O*NET skills: " + ", ".join(skill_names)
-            if skill_names
-            else ""
-        )
-
         try:
-            risk_prediction = (
-                await gemini_risk_service.analyze_occupation(
-                    occupation_data["title"],
-                    context=gemini_context,
-                )
-            )
+            risk_prediction = await risk_task
         except GeminiRiskServiceError:
             risk_prediction = {
                 "risk_score": 0,
