@@ -107,16 +107,18 @@ class QuadrantRiskCard(ft.Container):
         gauge = self._build_gauge()
 
         task_specs = [
-            ("Analyze Information", "82%"),
-            ("Process Routine Data", "74%"),
-            ("Communicate with Others", "48%"),
-            ("Solve Complex Problems", "31%"),
+            ("Waiting for Gemini analysis", "—"),
+            ("", "—"),
+            ("", "—"),
+            ("", "—"),
         ]
         task_controls = []
+        self._task_rows = []
         self._task_animation_sequence = []
 
         for index, (label, value) in enumerate(task_specs):
             task_row = self._legend_row(label, value)
+            self._task_rows.append(task_row)
             divider_line = None
 
             if index < len(task_specs) - 1:
@@ -869,6 +871,34 @@ class QuadrantRiskCard(ft.Container):
             self._gauge_canvas,
             self._score_text,
         )
+
+    def set_tasks(self, tasks: list[dict]):
+        for index, row in enumerate(self._task_rows):
+            label_control = row.content.controls[0]
+            value_control = row.content.controls[1].controls[0]
+
+            if not tasks and index == 0:
+                label_control.value = "Analyzing with Gemini…"
+                value_control.value = "—"
+                continue
+
+            task = tasks[index] if index < len(tasks) else None
+            if isinstance(task, dict) and task.get("task"):
+                label_control.value = str(task["task"])
+                try:
+                    probability = max(
+                        0,
+                        min(100, float(task["probability"])),
+                    )
+                    value_control.value = f"{round(probability)}%"
+                except (KeyError, TypeError, ValueError):
+                    value_control.value = "—"
+            else:
+                label_control.value = ""
+                value_control.value = "—"
+
+        if self._mounted:
+            self.page.update(*self._task_rows)
 
     async def animate_tasks(self):
         self._task_animation_generation += 1

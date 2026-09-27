@@ -7,6 +7,10 @@ from pathlib import Path
 import flet as ft
 
 import search as occupation_search
+from gemini_risk_service import (
+    GeminiRiskService,
+    GeminiRiskServiceError,
+)
 from occupation_service import OccupationService
 from oews_service import OewsDataError, OewsWageService
 from onet_service import OnetService, OnetServiceError
@@ -94,14 +98,6 @@ def _build_close_icon():
     )
 
 
-def occupation_risk_score(name: str) -> int:
-    weighted_name = sum(
-        position * ord(character)
-        for position, character in enumerate(name, start=1)
-    )
-    return weighted_name % 101
-
-
 class _CardCapturePage:
     """Collect the card added by one of the standalone demo modules."""
 
@@ -139,6 +135,7 @@ def build_occupation_row(
     market_card,
     economics_row,
     occupation_service: OccupationService,
+    gemini_risk_service: GeminiRiskService,
 ):
     occupation_chips = []
     occupation_chips_by_code = {}
@@ -206,9 +203,41 @@ def build_occupation_row(
             else None
         )
 
+        skill_names = [
+            skill["name"]
+            for skill in occupation_data["skills"]
+            if isinstance(skill.get("name"), str)
+        ]
+        gemini_context = (
+            "O*NET skills: " + ", ".join(skill_names)
+            if skill_names
+            else ""
+        )
+
+        try:
+            risk_prediction = (
+                await gemini_risk_service.analyze_occupation(
+                    occupation_data["title"],
+                    context=gemini_context,
+                )
+            )
+        except GeminiRiskServiceError:
+            risk_prediction = {
+                "risk_score": 0,
+                "tasks": [
+                    {
+                        "task": "Gemini analysis unavailable",
+                        "probability": 0,
+                        "justification": "",
+                    }
+                ],
+            }
+
+        risk_card.set_tasks(risk_prediction["tasks"])
+
         await asyncio.gather(
             risk_card.set_score(
-                occupation_risk_score(occupation_data["title"])
+                risk_prediction["risk_score"]
             ),
             risk_card.animate_tasks(),
             economics_row.set_occupation(
@@ -227,6 +256,7 @@ def build_occupation_row(
         selected_occupation_chip = selected_chip
         apply_selected_chip_style(selected_chip)
         skills_card.set_message("Loading O*NET skills…")
+        risk_card.set_tasks([])
         page.update()
         await update_occupation_content(occupation)
 
@@ -534,6 +564,7 @@ async def main(page: ft.Page):
     market_card = build_market_card(page)
     economics_row = EconomicsMetricsRow(page)
     onet_service = OnetService()
+    gemini_risk_service = GeminiRiskService()
     occupation_service = OccupationService(
         onet_service,
         OewsWageService(),
@@ -545,6 +576,7 @@ async def main(page: ft.Page):
         market_card,
         economics_row,
         occupation_service,
+        gemini_risk_service,
     )
     search_control = await occupation_search.main(
         page,

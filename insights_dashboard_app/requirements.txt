@@ -2,3 +2,5 @@ flet==1.0.1
 flet-charts==1.0.1
 flet-web==1.0.1
 polars==1.44.2
+google-genai==2.22.0
+pandas>=2.0.0
