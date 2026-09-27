@@ -69,7 +69,7 @@ class OnetService:
         onet_code: str,
         *,
         limit: int = 6,
-    ) -> list[dict[str, str]]:
+    ) -> list[dict[str, object]]:
         code = onet_code.strip()
         if not code:
             raise ValueError("An O*NET-SOC code is required.")
@@ -80,9 +80,13 @@ class OnetService:
             self._get_json,
             (
                 f"/online/occupations/{encoded_code}"
-                "/summary/skills"
+                "/details/skills"
             ),
-            {"start": 1, "end": requested_limit},
+            {
+                "start": 1,
+                "end": requested_limit,
+                "sort": "importance",
+            },
         )
         elements = payload.get("element", [])
         if not isinstance(elements, list):
@@ -97,15 +101,26 @@ class OnetService:
             skill_id = element.get("id")
             name = element.get("name")
             description = element.get("description")
+            importance = element.get("importance")
             if all(
                 isinstance(value, str)
                 for value in (skill_id, name, description)
             ):
+                try:
+                    importance_value = float(importance)
+                except (TypeError, ValueError):
+                    importance_value = 0.0
+
+                importance_value = max(
+                    0.0,
+                    min(100.0, importance_value),
+                )
                 skills.append(
                     {
                         "id": skill_id,
                         "name": name,
                         "description": description,
+                        "importance": importance_value,
                     }
                 )
 

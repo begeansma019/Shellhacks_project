@@ -247,7 +247,7 @@ def build_occupation_row(
 
         selected_occupation_chip = selected_chip
         apply_selected_chip_style(selected_chip)
-        skills_card.set_message("Loading O*NET skills…")
+        skills_card.set_loading("Loading O*NET skills…")
         risk_card.set_tasks([])
         page.update()
         await update_occupation_content(occupation)

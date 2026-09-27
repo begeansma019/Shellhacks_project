@@ -27,9 +27,9 @@ class SkillsMapCard(ft.Container):
         self._maximum_data = maximum_data
         self._radar_chart = radar_chart
         self._message_host = message_host
-        self.skills: list[dict[str, str]] = []
+        self.skills: list[dict[str, object]] = []
 
-    def set_skills(self, skills: list[dict[str, str]]):
+    def set_skills(self, skills: list[dict[str, object]]):
         self.skills = list(skills[:6])
         if not self.skills:
             self.set_message(
@@ -38,8 +38,16 @@ class SkillsMapCard(ft.Container):
             return
 
         self._skill_data.entries = [
-            fch.RadarDataSetEntry(100)
-            for _ in self.skills
+            fch.RadarDataSetEntry(
+                max(
+                    0.0,
+                    min(
+                        100.0,
+                        float(skill.get("importance", 0.0)),
+                    ),
+                )
+            )
+            for skill in self.skills
         ]
         self._maximum_data.entries = [
             fch.RadarDataSetEntry(100)
@@ -54,6 +62,14 @@ class SkillsMapCard(ft.Container):
         ]
         self._radar_chart.visible = True
         self._message_host.visible = False
+
+    def set_loading(self, message: str):
+        if self._radar_chart.visible:
+            self._message_host.visible = False
+            return
+
+        self._message_host.content.value = message
+        self._message_host.visible = True
 
     def set_message(self, message: str):
         self._message_host.content.value = message
@@ -86,6 +102,10 @@ def main(page: ft.Page):
     radar_chart = fch.RadarChart(
         expand=True,
         titles=[],
+        animation=ft.Animation(
+            duration=450,
+            curve=ft.AnimationCurve.EASE_OUT_CUBIC,
+        ),
         radar_shape=fch.RadarShape.POLYGON,
         tick_count=4,
         interactive=False,
