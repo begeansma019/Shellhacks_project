@@ -197,16 +197,6 @@ async def main(
                                     max_lines=1,
                                     overflow=ft.TextOverflow.ELLIPSIS,
                                 ),
-                                ft.Text(
-                                    value=occupation.get(
-                                        "category",
-                                        occupation.get("code", ""),
-                                    ),
-                                    size=12,
-                                    color=ft.Colors.WHITE_54,
-                                    max_lines=1,
-                                    overflow=ft.TextOverflow.ELLIPSIS,
-                                ),
                             ],
                             spacing=2,
                             tight=True,
