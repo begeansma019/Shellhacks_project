@@ -58,6 +58,10 @@ ANIMATION_CURVE = ft.AnimationCurve.EASE_IN_OUT
 # Give the client a small safety margin before resetting reels.
 ANIMATION_SAFETY_MS = 100
 
+# Newly rebuilt scroll controls need one browser paint/mount window
+# before scroll_to() is dispatched on hosted Flet web sessions.
+REEL_MOUNT_SETTLE_SECONDS = 0.10
+
 
 # ============================================================
 # DIGIT CELL
@@ -602,6 +606,40 @@ class RollingFormattedNumber:
             for character in display_text
         )
 
+    @staticmethod
+    def _digits(display_text: str) -> list[int]:
+        return [
+            int(character)
+            for character in display_text
+            if character.isdigit()
+        ]
+
+    def _transition_text(
+        self,
+        target_text: str,
+    ) -> str:
+        old_digits = self._digits(self.display_text)
+        target_digits = self._digits(target_text)
+
+        if not target_digits:
+            return target_text
+
+        if len(old_digits) >= len(target_digits):
+            start_digits = old_digits[-len(target_digits):]
+        else:
+            start_digits = (
+                [0] * (len(target_digits) - len(old_digits))
+                + old_digits
+            )
+
+        digit_iterator = iter(start_digits)
+        return "".join(
+            str(next(digit_iterator))
+            if character.isdigit()
+            else character
+            for character in target_text
+        )
+
     def _literal_color(self, character: str):
         if character == "+":
             return self.positive_color
@@ -675,12 +713,34 @@ class RollingFormattedNumber:
 
     async def _animate_to(self, display_text: str):
         if self._shape(display_text) != self._shape(self.display_text):
-            self.control.opacity = 0
+            target_digits = self._digits(display_text)
+
+            if not target_digits:
+                self._build(display_text)
+                self.display_text = display_text
+                self.page.update(self.control)
+                return
+
+            old_digits = self._digits(self.display_text)
+            old_digits_value = (
+                int("".join(str(digit) for digit in old_digits))
+                if old_digits
+                else 0
+            )
+            new_digits_value = int(
+                "".join(str(digit) for digit in target_digits)
+            )
+            increasing = (
+                new_digits_value >= old_digits_value
+            )
+
+            transition_text = self._transition_text(display_text)
+            self._build(transition_text)
             self.page.update(self.control)
 
-            self.display_text = display_text
-            self._build(display_text)
-            self.page.update(self.control)
+            await asyncio.sleep(
+                REEL_MOUNT_SETTLE_SECONDS
+            )
 
             await asyncio.gather(
                 *[
@@ -688,27 +748,72 @@ class RollingFormattedNumber:
                     for reel in self.reels_by_index.values()
                 ]
             )
-            await asyncio.sleep(0.04)
 
-            self.control.opacity = 1
-            self.page.update(self.control)
+            changed_reels = []
+            animation_tasks = []
+            longest_duration = 0
+
+            for index, reel in self.reels_by_index.items():
+                target_digit = int(display_text[index])
+
+                if target_digit == reel.value:
+                    continue
+
+                changed_reels.append(reel)
+                longest_duration = max(
+                    longest_duration,
+                    reel.animation_duration_to(
+                        target_digit,
+                        increasing,
+                    ),
+                )
+                animation_tasks.append(
+                    reel.roll_to(
+                        target_digit,
+                        increasing,
+                    )
+                )
+
+            if animation_tasks:
+                await asyncio.gather(*animation_tasks)
+                await asyncio.sleep(longest_duration / 1000)
+                await asyncio.sleep(
+                    ANIMATION_SAFETY_MS / 1000
+                )
+
+            await asyncio.gather(
+                *[
+                    reel.recenter()
+                    for reel in changed_reels
+                ]
+            )
+
+            self.display_text = display_text
             return
 
-        old_digits = int(
-            "".join(
-                character
-                for character in self.display_text
-                if character.isdigit()
-            )
+        old_digit_string = "".join(
+            character
+            for character in self.display_text
+            if character.isdigit()
         )
-        new_digits = int(
-            "".join(
-                character
-                for character in display_text
-                if character.isdigit()
-            )
+        new_digit_string = "".join(
+            character
+            for character in display_text
+            if character.isdigit()
         )
-        increasing = new_digits > old_digits
+        old_digits_value = (
+            int(old_digit_string)
+            if old_digit_string
+            else 0
+        )
+        new_digits_value = (
+            int(new_digit_string)
+            if new_digit_string
+            else 0
+        )
+        increasing = (
+            new_digits_value >= old_digits_value
+        )
         changed_reels = []
         animation_tasks = []
         longest_duration = 0
