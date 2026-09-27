@@ -114,10 +114,16 @@ class QuadrantRiskCard(ft.Container):
         ]
         task_controls = []
         self._task_rows = []
+        self._task_items = []
+        self._task_expanded = [False, False, False, False]
         self._task_animation_sequence = []
 
         for index, (label, value) in enumerate(task_specs):
-            task_row = self._legend_row(label, value)
+            task_row = self._build_expandable_task(
+                index,
+                label,
+                value,
+            )
             self._task_rows.append(task_row)
             divider_line = None
 
@@ -148,6 +154,8 @@ class QuadrantRiskCard(ft.Container):
 
         self.content = ft.Column(
             spacing=0,
+
+            scroll=ft.ScrollMode.AUTO,
 
             alignment=ft.MainAxisAlignment.CENTER,
 
@@ -873,18 +881,27 @@ class QuadrantRiskCard(ft.Container):
         )
 
     def set_tasks(self, tasks: list[dict]):
-        for index, row in enumerate(self._task_rows):
-            label_control = row.content.controls[0]
-            value_control = row.content.controls[1].controls[0]
+        for index, item in enumerate(self._task_items):
+            label_control = item["label"]
+            value_control = item["probability"]
+            justification_control = item["justification"]
+
+            self._task_expanded[index] = False
+            item["details"].visible = False
+            item["chevron"].icon = ft.Icons.CHEVRON_RIGHT
 
             if not tasks and index == 0:
                 label_control.value = "Analyzing with Gemini…"
                 value_control.value = "—"
+                justification_control.value = ""
                 continue
 
             task = tasks[index] if index < len(tasks) else None
             if isinstance(task, dict) and task.get("task"):
                 label_control.value = str(task["task"])
+                justification_control.value = str(
+                    task.get("justification", "")
+                ).strip()
                 try:
                     probability = max(
                         0,
@@ -896,6 +913,7 @@ class QuadrantRiskCard(ft.Container):
             else:
                 label_control.value = ""
                 value_control.value = "—"
+                justification_control.value = ""
 
         if self._mounted:
             self.page.update(*self._task_rows)
@@ -949,21 +967,63 @@ class QuadrantRiskCard(ft.Container):
             await asyncio.sleep(TASK_SECTION_DELAY)
 
     # ============================================================
-    # LEGEND ROW
+    # EXPANDABLE TASK
     # ============================================================
 
-    def _legend_row(
+    def _build_expandable_task(
         self,
+        index: int,
         label: str,
         value: str,
+        justification: str = "",
     ):
+        label_control = ft.Text(
+            label,
+            size=13,
+            color=SECONDARY_TEXT,
+            expand=True,
+        )
+        probability_control = ft.Text(
+            value,
+            size=13,
+            color=SECONDARY_TEXT,
+        )
+        chevron_control = ft.Icon(
+            ft.Icons.CHEVRON_RIGHT,
+            size=16,
+            color=SECONDARY_TEXT,
+        )
+        justification_control = ft.Text(
+            justification,
+            size=12,
+            color=SECONDARY_TEXT,
+        )
+        details_control = ft.Container(
+            visible=False,
+            padding=ft.Padding.only(top=8),
+            content=justification_control,
+        )
 
-        return ft.Container(
+        def handle_toggle(event):
+            if not justification_control.value.strip():
+                return
 
-            height=36,
+            self._task_expanded[index] = (
+                not self._task_expanded[index]
+            )
+            details_control.visible = self._task_expanded[index]
+            chevron_control.icon = (
+                ft.Icons.EXPAND_MORE
+                if self._task_expanded[index]
+                else ft.Icons.CHEVRON_RIGHT
+            )
 
+            if self._mounted:
+                self.page.update(task_container)
+
+        header_control = ft.Container(
+            on_click=handle_toggle,
             content=ft.Row(
-
                 spacing=9,
 
                 vertical_alignment=(
@@ -971,46 +1031,48 @@ class QuadrantRiskCard(ft.Container):
                 ),
 
                 controls=[
-
-                    # =================================================
-                    # LABEL
-                    # =================================================
-
-                    ft.Text(
-
-                        label,
-
-                        size=13,
-
-                        color=SECONDARY_TEXT,
-
-                        expand=True,
-                    ),
-
-                    # =================================================
-                    # RANGE
-                    # =================================================
-
+                    label_control,
                     ft.Row(
                         spacing=4,
-
                         controls=[
-                            ft.Text(
-                                value,
-                                size=13,
-                                color=SECONDARY_TEXT,
-                            ),
-
-                            ft.Icon(
-                                ft.Icons.CHEVRON_RIGHT,
-                                size=16,
-                                color=SECONDARY_TEXT,
-                            ),
+                            probability_control,
+                            chevron_control,
                         ],
                     ),
                 ],
             ),
         )
+
+        task_container = ft.Container(
+            width=356,
+            bgcolor=ft.Colors.TRANSPARENT,
+            border_radius=8,
+            padding=ft.Padding.symmetric(
+                horizontal=12,
+                vertical=9,
+            ),
+            content=ft.Column(
+                spacing=0,
+                controls=[
+                    header_control,
+                    details_control,
+                ],
+            ),
+        )
+
+        self._task_items.append(
+            {
+                "container": task_container,
+                "header": header_control,
+                "label": label_control,
+                "probability": probability_control,
+                "chevron": chevron_control,
+                "details": details_control,
+                "justification": justification_control,
+            }
+        )
+
+        return task_container
 
 
 # ============================================================
