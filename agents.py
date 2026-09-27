@@ -197,6 +197,11 @@ def run_risk_prediction(
                 response_mime_type="application/json",
                 response_schema=response_schema,
                 temperature=0.2,
+                automatic_function_calling=(
+                    genai.types.AutomaticFunctionCallingConfig(
+                        disable=True,
+                    )
+                ),
             ),
         )
         prediction = json.loads(response.text)
