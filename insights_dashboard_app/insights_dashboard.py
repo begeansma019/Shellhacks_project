@@ -307,6 +307,10 @@ def build_occupation_row(
                 duration=300,
                 curve=ft.AnimationCurve.EASE_OUT,
             ),
+            animate_size=ft.Animation(
+                duration=300,
+                curve=ft.AnimationCurve.EASE_OUT,
+            ),
         )
 
         async def handle_occupation_click(
@@ -453,26 +457,26 @@ def build_occupation_row(
     return occupation_row, select_occupation_record
 
 
-def occupation_economics_values(
+def calculate_occupation_economics(
     median_wage: int | None,
     automation_share_percent: float | int | None,
-):
+) -> dict[str, float | None] | None:
     if (
         median_wage is None
         or automation_share_percent is None
     ):
-        return (
-            ("—", "—", "—", "—", "—"),
-            "Automation estimate unavailable",
-        )
+        return None
 
-    automation_share = max(
+    normalized_automation_share_percent = max(
         0.0,
         min(
             100.0,
             float(automation_share_percent),
         ),
-    ) / 100.0
+    )
+    automation_share = (
+        normalized_automation_share_percent / 100.0
+    )
     labor_value_replaced = (
         float(median_wage)
         * automation_share
@@ -551,7 +555,51 @@ def occupation_economics_values(
             / monthly_recurring_savings
         )
     else:
+        monthly_recurring_savings = None
         payback_months = None
+
+    return {
+        "median_wage": float(median_wage),
+        "automation_share_percent": (
+            normalized_automation_share_percent
+        ),
+        "automation_share": automation_share,
+        "labor_value_replaced": labor_value_replaced,
+        "automated_hours": automated_hours,
+        "annual_input_tokens": annual_input_tokens,
+        "annual_output_tokens": annual_output_tokens,
+        "annual_model_cost": annual_model_cost,
+        "median_hourly_wage": median_hourly_wage,
+        "annual_oversight_cost": annual_oversight_cost,
+        "annual_software_infra_cost": annual_software_infra_cost,
+        "annual_maintenance_cost": annual_maintenance_cost,
+        "annualized_implementation_cost": (
+            annualized_implementation_cost
+        ),
+        "annual_recurring_ai_cost": annual_recurring_ai_cost,
+        "annual_ai_cost": annual_ai_cost,
+        "annual_savings": annual_savings,
+        "replacement_ratio": replacement_ratio,
+        "annual_recurring_savings": annual_recurring_savings,
+        "monthly_recurring_savings": monthly_recurring_savings,
+        "payback_months": payback_months,
+    }
+
+
+def _format_occupation_economics(
+    economics: dict[str, float | None] | None,
+):
+    if economics is None:
+        return (
+            ("—", "—", "—", "—", "—"),
+            "Automation estimate unavailable",
+        )
+
+    labor_value_replaced = economics["labor_value_replaced"]
+    annual_ai_cost = economics["annual_ai_cost"]
+    annual_savings = economics["annual_savings"]
+    replacement_ratio = economics["replacement_ratio"]
+    payback_months = economics["payback_months"]
 
     labor_display = f"${labor_value_replaced:,.0f}"
     ai_cost_display = f"-${annual_ai_cost:,.0f}"
@@ -598,6 +646,18 @@ def occupation_economics_values(
     )
 
 
+def occupation_economics_values(
+    median_wage: int | None,
+    automation_share_percent: float | int | None,
+):
+    return _format_occupation_economics(
+        calculate_occupation_economics(
+            median_wage,
+            automation_share_percent,
+        )
+    )
+
+
 def build_risk_card():
     risk_module = import_module("56")
 
@@ -635,20 +695,34 @@ class EconomicsMetricsRow:
         self.metric_cards = list(
             economics_content.metric_cards[1:]
         )
-        initial_values = (
+        self.current_display_values = (
             "—",
             "—",
             "—",
             "—",
             "—",
         )
+        self.current_economics = None
+        self.active_metric_index = None
+        self.source_geometry = None
+        self.is_animating = False
+        self._active_source_card = None
+        self.metric_titles = tuple(
+            card.content.controls[2].value
+            for card in self.metric_cards
+        )
+        self.current_descriptions = tuple(
+            card.content.controls[6].value
+            for card in self.metric_cards
+        )
         self.value_reels = []
+        self.metric_hosts = []
 
-        for card, initial_value in zip(
+        for metric_index, (card, initial_value) in enumerate(zip(
             self.metric_cards,
-            initial_values,
+            self.current_display_values,
             strict=True,
-        ):
+        )):
             value_reel = RollingFormattedNumber(
                 page,
                 initial_value,
@@ -672,12 +746,657 @@ class EconomicsMetricsRow:
             card.content.controls[0].visible = False
             card.content.controls[2].size = 12
             card.content.controls[4] = value_reel.control
+            card.animate_opacity = ft.Animation(
+                duration=100,
+                curve=ft.AnimationCurve.EASE_OUT,
+            )
+
+            async def handle_metric_tap(
+                event,
+                index=metric_index,
+            ):
+                await self.open_metric_details(index, event)
+
+            self.metric_hosts.append(
+                ft.GestureDetector(
+                    expand=True,
+                    mouse_cursor=ft.MouseCursor.CLICK,
+                    on_tap_down=handle_metric_tap,
+                    content=card,
+                )
+            )
 
         self.control = ft.Row(
             height=METRIC_CARD_HEIGHT,
             spacing=12,
-            controls=self.metric_cards,
+            controls=self.metric_hosts,
         )
+        self.overlay = self._build_overlay()
+
+    def _build_overlay(self):
+        self._expanded_title = ft.Text(
+            size=18,
+            weight=ft.FontWeight.BOLD,
+            color=PRIMARY_TEXT,
+            expand=True,
+        )
+        self._expanded_value = ft.Text(
+            size=34,
+            weight=ft.FontWeight.W_500,
+            color=PRIMARY_TEXT,
+        )
+        self._expanded_description = ft.Text(
+            size=12,
+            color=SECONDARY_TEXT,
+        )
+        self._expanded_details = ft.Column(
+            expand=True,
+            spacing=12,
+            scroll=ft.ScrollMode.AUTO,
+        )
+        self._details_host = ft.Container(
+            expand=True,
+            opacity=0,
+            animate_opacity=ft.Animation(
+                duration=140,
+                curve=ft.AnimationCurve.EASE_OUT,
+            ),
+            content=self._expanded_details,
+        )
+        self._backdrop = ft.Container(
+            expand=True,
+            bgcolor="#99000000",
+            blur=ft.Blur(12, 12),
+            opacity=0,
+            animate_opacity=ft.Animation(
+                duration=260,
+                curve=ft.AnimationCurve.EASE_OUT,
+            ),
+        )
+        self._expanded_card = ft.Container(
+            left=0,
+            top=0,
+            width=1,
+            height=METRIC_CARD_HEIGHT,
+            bgcolor=self.metric_cards[0].bgcolor,
+            border=self.metric_cards[0].border,
+            border_radius=self.metric_cards[0].border_radius,
+            padding=ft.Padding.all(22),
+            clip_behavior=ft.ClipBehavior.HARD_EDGE,
+            animate_position=ft.Animation(
+                duration=360,
+                curve=ft.AnimationCurve.EASE_OUT_CUBIC,
+            ),
+            animate_size=ft.Animation(
+                duration=360,
+                curve=ft.AnimationCurve.EASE_OUT_CUBIC,
+            ),
+            content=ft.Column(
+                expand=True,
+                spacing=9,
+                controls=[
+                    ft.Row(
+                        spacing=8,
+                        vertical_alignment=(
+                            ft.CrossAxisAlignment.CENTER
+                        ),
+                        controls=[
+                            self._expanded_title,
+                            ft.IconButton(
+                                icon=ft.Icons.CLOSE,
+                                icon_color=PRIMARY_TEXT,
+                                icon_size=20,
+                                tooltip="Close",
+                                on_click=self.close_expanded_metric,
+                            ),
+                        ],
+                    ),
+                    self._expanded_value,
+                    self._expanded_description,
+                    ft.Divider(height=1, color=CHIP_BORDER),
+                    self._details_host,
+                ],
+            ),
+        )
+        overlay_stack = ft.Stack(
+            expand=True,
+            fit=ft.StackFit.EXPAND,
+            controls=[
+                self._backdrop,
+                self._expanded_card,
+            ],
+        )
+        return ft.Container(
+            left=0,
+            top=0,
+            right=0,
+            bottom=0,
+            visible=False,
+            ignore_interactions=True,
+            content=overlay_stack,
+        )
+
+    @staticmethod
+    def _money(value: float | None) -> str:
+        return "—" if value is None else f"${value:,.0f}"
+
+    @staticmethod
+    def _signed_money(value: float | None) -> str:
+        if value is None:
+            return "—"
+        if value > 0:
+            return f"+${value:,.0f}"
+        if value < 0:
+            return f"-${abs(value):,.0f}"
+        return "$0"
+
+    @staticmethod
+    def _section_label(label: str):
+        return ft.Text(
+            label,
+            size=11,
+            weight=ft.FontWeight.BOLD,
+            color=SECONDARY_TEXT,
+        )
+
+    @staticmethod
+    def _detail_row(
+        label: str,
+        value: str,
+        *,
+        value_color=PRIMARY_TEXT,
+        bold=False,
+    ):
+        return ft.Row(
+            spacing=16,
+            vertical_alignment=ft.CrossAxisAlignment.START,
+            controls=[
+                ft.Text(
+                    label,
+                    size=12,
+                    color=SECONDARY_TEXT,
+                    expand=True,
+                ),
+                ft.Text(
+                    value,
+                    size=12,
+                    color=value_color,
+                    weight=(
+                        ft.FontWeight.BOLD
+                        if bold
+                        else ft.FontWeight.NORMAL
+                    ),
+                    text_align=ft.TextAlign.RIGHT,
+                ),
+            ],
+        )
+
+    @staticmethod
+    def _calculation_block(*lines: str):
+        return ft.Container(
+            bgcolor="#111111",
+            border=ft.Border.all(width=1, color=CHIP_BORDER),
+            border_radius=10,
+            padding=ft.Padding.all(14),
+            content=ft.Column(
+                spacing=4,
+                controls=[
+                    ft.Text(
+                        line,
+                        size=12,
+                        color=(
+                            PRIMARY_TEXT
+                            if index == len(lines) - 1
+                            else SECONDARY_TEXT
+                        ),
+                        weight=(
+                            ft.FontWeight.BOLD
+                            if index == len(lines) - 1
+                            else ft.FontWeight.NORMAL
+                        ),
+                    )
+                    for index, line in enumerate(lines)
+                ],
+            ),
+        )
+
+    def _metric_value_color(self, metric_index: int):
+        economics = self.current_economics
+        if metric_index == 1:
+            return METRIC_RED
+        if economics is None:
+            return PRIMARY_TEXT
+        if metric_index == 2:
+            return (
+                METRIC_GREEN
+                if economics["annual_savings"] >= 0
+                else METRIC_RED
+            )
+        if metric_index == 3:
+            replacement_ratio = economics["replacement_ratio"]
+            if replacement_ratio is None:
+                return PRIMARY_TEXT
+            return (
+                METRIC_GREEN
+                if replacement_ratio < 100
+                else METRIC_RED
+                if replacement_ratio > 100
+                else PRIMARY_TEXT
+            )
+        if metric_index == 4:
+            return (
+                METRIC_GREEN
+                if economics["payback_months"] is not None
+                else METRIC_RED
+            )
+        return PRIMARY_TEXT
+
+    def _build_metric_details(self, metric_index: int):
+        economics = self.current_economics
+        if economics is None:
+            return [
+                ft.Container(
+                    padding=ft.Padding.only(top=22),
+                    content=ft.Text(
+                        "Detailed economics are unavailable for this "
+                        "occupation.",
+                        size=13,
+                        color=SECONDARY_TEXT,
+                    ),
+                )
+            ]
+
+        median_wage = economics["median_wage"]
+        automation_percent = economics[
+            "automation_share_percent"
+        ]
+        labor_value = economics["labor_value_replaced"]
+        automated_hours = economics["automated_hours"]
+        annual_ai_cost = economics["annual_ai_cost"]
+        recurring_cost = economics["annual_recurring_ai_cost"]
+        recurring_savings = economics["annual_recurring_savings"]
+
+        if metric_index == 0:
+            return [
+                self._section_label("INPUTS"),
+                self._detail_row(
+                    "Median annual wage",
+                    self._money(median_wage),
+                ),
+                self._detail_row(
+                    "Realizable automation share",
+                    f"{automation_percent:.1f}%",
+                ),
+                self._section_label("CALCULATION"),
+                self._calculation_block(
+                    f"{self._money(median_wage)} × "
+                    f"{automation_percent:.1f}%",
+                    f"= {self._money(labor_value)}",
+                ),
+                self._detail_row(
+                    "Automated workload",
+                    f"{automated_hours:,.0f} hours / year",
+                ),
+                self._calculation_block(
+                    f"{WORK_HOURS_PER_YEAR:,} × "
+                    f"{automation_percent:.1f}%",
+                    f"= {automated_hours:,.0f} hours",
+                ),
+            ]
+
+        if metric_index == 1:
+            return [
+                self._section_label("COST BREAKDOWN"),
+                self._detail_row(
+                    "Gemini/model API cost",
+                    self._money(economics["annual_model_cost"]),
+                ),
+                self._detail_row(
+                    "Software infrastructure",
+                    self._money(
+                        economics["annual_software_infra_cost"]
+                    ),
+                ),
+                self._detail_row(
+                    "Human oversight",
+                    self._money(economics["annual_oversight_cost"]),
+                ),
+                self._detail_row(
+                    "Maintenance",
+                    self._money(economics["annual_maintenance_cost"]),
+                ),
+                self._detail_row(
+                    "Annualized implementation",
+                    self._money(
+                        economics["annualized_implementation_cost"]
+                    ),
+                ),
+                ft.Divider(height=1, color=CHIP_BORDER),
+                self._detail_row(
+                    "Total Annual AI Cost",
+                    self._money(annual_ai_cost),
+                    value_color=METRIC_RED,
+                    bold=True,
+                ),
+                self._section_label("MODEL USAGE"),
+                self._detail_row(
+                    "Automated hours / year",
+                    f"{automated_hours:,.0f}",
+                ),
+                self._detail_row(
+                    "Input tokens / automated hour",
+                    f"{ASSUMED_INPUT_TOKENS_PER_AUTOMATED_HOUR:,}",
+                ),
+                self._detail_row(
+                    "Output tokens / automated hour",
+                    f"{ASSUMED_OUTPUT_TOKENS_PER_AUTOMATED_HOUR:,}",
+                ),
+                self._detail_row(
+                    "Annual input tokens",
+                    f"{economics['annual_input_tokens'] / 1_000_000:.2f}M",
+                ),
+                self._detail_row(
+                    "Annual output tokens",
+                    f"{economics['annual_output_tokens'] / 1_000_000:.2f}M",
+                ),
+                self._detail_row(
+                    "Input model rate",
+                    f"${GEMINI_INPUT_PRICE_PER_MILLION:.2f} / 1M tokens",
+                ),
+                self._detail_row(
+                    "Output model rate",
+                    f"${GEMINI_OUTPUT_PRICE_PER_MILLION:.2f} / 1M tokens",
+                ),
+            ]
+
+        if metric_index == 2:
+            savings = economics["annual_savings"]
+            return [
+                self._section_label("CALCULATION"),
+                self._detail_row(
+                    "Labor value replaced",
+                    self._signed_money(labor_value),
+                    value_color=METRIC_GREEN,
+                ),
+                self._detail_row(
+                    "Annual AI cost",
+                    f"-{self._money(annual_ai_cost)}",
+                    value_color=METRIC_RED,
+                ),
+                ft.Divider(height=1, color=CHIP_BORDER),
+                self._detail_row(
+                    "Net annual savings",
+                    self._signed_money(savings),
+                    value_color=(
+                        METRIC_GREEN if savings >= 0 else METRIC_RED
+                    ),
+                    bold=True,
+                ),
+                self._section_label("RECURRING ECONOMICS"),
+                self._detail_row(
+                    "Annual recurring AI cost",
+                    self._money(recurring_cost),
+                ),
+                self._detail_row(
+                    "Annual recurring savings",
+                    self._signed_money(recurring_savings),
+                    value_color=(
+                        METRIC_GREEN
+                        if recurring_savings >= 0
+                        else METRIC_RED
+                    ),
+                ),
+                ft.Text(
+                    "Recurring savings exclude annualized "
+                    "implementation cost.",
+                    size=11,
+                    color=SECONDARY_TEXT,
+                ),
+            ]
+
+        if metric_index == 3:
+            replacement_ratio = economics["replacement_ratio"]
+            _, ratio_description = _format_occupation_economics(
+                economics
+            )
+            ratio_display = (
+                f"{replacement_ratio:.1f}%"
+                if replacement_ratio is not None
+                else "—"
+            )
+            return [
+                self._section_label("CALCULATION"),
+                self._detail_row(
+                    "Annual AI cost",
+                    self._money(annual_ai_cost),
+                ),
+                self._detail_row(
+                    "Labor value replaced",
+                    self._money(labor_value),
+                ),
+                self._calculation_block(
+                    f"{self._money(annual_ai_cost)}",
+                    "──────────── × 100",
+                    f"{self._money(labor_value)}",
+                    f"= {ratio_display}",
+                ),
+                ft.Text(
+                    ratio_description,
+                    size=12,
+                    color=self._metric_value_color(metric_index),
+                    weight=ft.FontWeight.BOLD,
+                ),
+            ]
+
+        monthly_savings = economics["monthly_recurring_savings"]
+        payback_months = economics["payback_months"]
+        controls = [
+            self._section_label("INPUTS"),
+            self._detail_row(
+                "Upfront implementation cost",
+                self._money(float(ASSUMED_IMPLEMENTATION_COST)),
+            ),
+            self._detail_row(
+                "Annual recurring AI cost",
+                self._money(recurring_cost),
+            ),
+            self._detail_row(
+                "Labor value replaced",
+                self._money(labor_value),
+            ),
+            self._detail_row(
+                "Annual recurring savings",
+                self._signed_money(recurring_savings),
+            ),
+            self._detail_row(
+                "Monthly recurring savings",
+                self._signed_money(monthly_savings),
+            ),
+            self._section_label("CALCULATION"),
+        ]
+        if payback_months is None or monthly_savings is None:
+            controls.append(
+                self._calculation_block(
+                    "No Payback",
+                    "Recurring AI cost meets or exceeds the "
+                    "estimated labor value replaced.",
+                )
+            )
+        else:
+            controls.append(
+                self._calculation_block(
+                    self._money(float(ASSUMED_IMPLEMENTATION_COST)),
+                    "───────────────",
+                    f"{self._money(monthly_savings)} / month",
+                    f"= {payback_months:.1f} months",
+                )
+            )
+        return controls
+
+    def _populate_expanded_metric(self, metric_index: int):
+        self._expanded_title.value = self.metric_titles[metric_index]
+        self._expanded_value.value = self.current_display_values[
+            metric_index
+        ]
+        self._expanded_value.color = self._metric_value_color(
+            metric_index
+        )
+        self._expanded_description.value = (
+            self.current_descriptions[metric_index]
+        )
+        self._expanded_details.controls = (
+            self._build_metric_details(metric_index)
+        )
+
+    def _compact_card_width(self):
+        page_width = float(self.page.width or 1280)
+        left_column_width = max(
+            0.0,
+            page_width
+            - (PAGE_PADDING * 2)
+            - RIGHT_COLUMN_WIDTH
+            - CARD_GAP,
+        )
+        return max(
+            120.0,
+            (left_column_width - (12 * 4)) / 5,
+        )
+
+    def _source_card_geometry(self, metric_index: int, event):
+        source_width = self._compact_card_width()
+        global_position = getattr(event, "global_position", None)
+        local_position = getattr(event, "local_position", None)
+        if global_position is not None and local_position is not None:
+            source_left = global_position.x - local_position.x
+            source_top = global_position.y - local_position.y
+        else:
+            source_left = (
+                PAGE_PADDING
+                + metric_index * (source_width + 12)
+            )
+            source_top = 56 + 62 + PAGE_PADDING
+        return (
+            float(source_left),
+            float(source_top),
+            source_width,
+            float(METRIC_CARD_HEIGHT),
+        )
+
+    def _expanded_geometry(self):
+        page_width = float(self.page.width or 1280)
+        page_height = float(self.page.height or 800)
+        expanded_width = max(
+            280.0,
+            min(720.0, page_width - 40),
+        )
+        expanded_height = max(
+            320.0,
+            min(520.0, page_height - 60),
+        )
+        return (
+            max(20.0, (page_width - expanded_width) / 2),
+            max(20.0, (page_height - expanded_height) / 2),
+            expanded_width,
+            expanded_height,
+        )
+
+    async def open_metric_details(self, metric_index: int, event):
+        if self.active_metric_index is not None or self.is_animating:
+            return
+
+        self.is_animating = True
+        self.active_metric_index = metric_index
+        self._active_source_card = self.metric_cards[metric_index]
+        self.source_geometry = self._source_card_geometry(
+            metric_index,
+            event,
+        )
+        source_left, source_top, source_width, source_height = (
+            self.source_geometry
+        )
+        self._populate_expanded_metric(metric_index)
+        self._details_host.opacity = 0
+        self._backdrop.opacity = 0
+        self._expanded_card.left = source_left
+        self._expanded_card.top = source_top
+        self._expanded_card.width = source_width
+        self._expanded_card.height = source_height
+        self._expanded_card.animate_position = ft.Animation(
+            duration=360,
+            curve=ft.AnimationCurve.EASE_OUT_CUBIC,
+        )
+        self._expanded_card.animate_size = ft.Animation(
+            duration=360,
+            curve=ft.AnimationCurve.EASE_OUT_CUBIC,
+        )
+        self.overlay.ignore_interactions = False
+        self.overlay.visible = True
+        self.page.update(self.overlay)
+        await asyncio.sleep(0.02)
+
+        target_left, target_top, target_width, target_height = (
+            self._expanded_geometry()
+        )
+        self._active_source_card.opacity = 0
+        self._backdrop.opacity = 1
+        self._expanded_card.left = target_left
+        self._expanded_card.top = target_top
+        self._expanded_card.width = target_width
+        self._expanded_card.height = target_height
+        self.page.update(
+            self._active_source_card,
+            self._backdrop,
+            self._expanded_card,
+        )
+        await asyncio.sleep(0.38)
+
+        self._populate_expanded_metric(metric_index)
+        self._details_host.opacity = 1
+        self.page.update(
+            self._expanded_title,
+            self._expanded_value,
+            self._expanded_description,
+            self._expanded_details,
+            self._details_host,
+        )
+        self.is_animating = False
+
+    async def close_expanded_metric(self, _):
+        if self.active_metric_index is None or self.is_animating:
+            return
+
+        self.is_animating = True
+        self._details_host.opacity = 0
+        self.page.update(self._details_host)
+        await asyncio.sleep(0.12)
+
+        source_left, source_top, source_width, source_height = (
+            self.source_geometry
+        )
+        self._expanded_card.animate_position = ft.Animation(
+            duration=320,
+            curve=ft.AnimationCurve.EASE_IN_CUBIC,
+        )
+        self._expanded_card.animate_size = ft.Animation(
+            duration=320,
+            curve=ft.AnimationCurve.EASE_IN_CUBIC,
+        )
+        self._expanded_card.left = source_left
+        self._expanded_card.top = source_top
+        self._expanded_card.width = source_width
+        self._expanded_card.height = source_height
+        self._backdrop.opacity = 0
+        self.page.update(self._expanded_card, self._backdrop)
+        await asyncio.sleep(0.34)
+
+        self._active_source_card.opacity = 1
+        self.overlay.visible = False
+        self.overlay.ignore_interactions = True
+        self.page.update(self._active_source_card, self.overlay)
+        self.active_metric_index = None
+        self._active_source_card = None
+        self.source_geometry = None
+        self.is_animating = False
 
     async def initialize(self):
         await asyncio.gather(
@@ -692,17 +1411,50 @@ class EconomicsMetricsRow:
         median_wage: int | None,
         automation_share_percent: float | int | None,
     ):
+        self.current_economics = calculate_occupation_economics(
+            median_wage,
+            automation_share_percent,
+        )
         display_values, ratio_description = (
-            occupation_economics_values(
-                median_wage,
-                automation_share_percent,
+            _format_occupation_economics(
+                self.current_economics
             )
+        )
+        self.current_display_values = display_values
+        payback_description = (
+            "Upfront implementation ÷ monthly recurring savings"
+            if (
+                self.current_economics is not None
+                and self.current_economics["payback_months"]
+                is not None
+            )
+            else (
+                "Recurring AI cost meets or exceeds replaced "
+                "labor value"
+                if self.current_economics is not None
+                else "Automation estimate unavailable"
+            )
+        )
+        self.current_descriptions = (
+            "Median wage × realizable automation share",
+            "API + software + oversight + maintenance "
+            "+ annualized implementation",
+            "Labor value replaced − annual AI cost",
+            ratio_description,
+            payback_description,
         )
         ratio_description_control = (
             self.metric_cards[3].content.controls[6]
         )
         ratio_description_control.value = ratio_description
-        self.page.update(ratio_description_control)
+        payback_description_control = (
+            self.metric_cards[4].content.controls[6]
+        )
+        payback_description_control.value = payback_description
+        self.page.update(
+            ratio_description_control,
+            payback_description_control,
+        )
 
         await asyncio.gather(
             *[
@@ -714,6 +1466,16 @@ class EconomicsMetricsRow:
                 )
             ]
         )
+        if self.active_metric_index is not None:
+            self._populate_expanded_metric(
+                self.active_metric_index
+            )
+            self.page.update(
+                self._expanded_title,
+                self._expanded_value,
+                self._expanded_description,
+                self._expanded_details,
+            )
 
 
 def build_dashboard(
@@ -866,6 +1628,7 @@ async def main(page: ft.Page):
                         width=occupation_search.EXPANDED_WIDTH,
                         content=search_control,
                     ),
+                    economics_row.overlay,
                 ],
             ),
         )
