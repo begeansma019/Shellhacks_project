@@ -1,0 +1,17 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="PyPackageRequirementsInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredPackages">
+        <list>
+          <option value="flet-cli" />
+          <option value="flet-webview" />
+          <option value="flet-web" />
+          <option value="flet" />
+          <option value="flet-charts" />
+          <option value="flet-desktop" />
+        </list>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>
