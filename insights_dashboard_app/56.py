@@ -360,6 +360,19 @@ class QuadrantRiskCard(ft.Container):
 
         return RED
 
+    def color_for_score(self, score: float) -> str:
+        maximum = float(self.max_score)
+        if maximum <= 0:
+            return self._color_at_progress(0.0)
+
+        score_value = max(
+            0.0,
+            min(maximum, float(score)),
+        )
+        return self._color_at_progress(
+            score_value / maximum
+        )
+
     # ============================================================
     # EASE OUT CUBIC
     # ============================================================

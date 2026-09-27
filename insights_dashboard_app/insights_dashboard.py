@@ -226,6 +226,12 @@ def build_occupation_row(
             }
 
         risk_card.set_tasks(risk_prediction["tasks"])
+        skills_card.set_plot_color(
+            risk_card.color_for_score(
+                risk_prediction["risk_score"]
+            )
+        )
+        page.update(skills_card)
 
         await asyncio.gather(
             risk_card.set_score(

@@ -94,6 +94,13 @@ class SkillsMapCard(ft.Container):
         self._message_host.content.value = message
         self._message_host.visible = True
 
+    def set_plot_color(self, color: str):
+        self._skill_data.fill_color = ft.Colors.with_opacity(
+            0.30,
+            color,
+        )
+        self._skill_data.border_color = color
+
     def set_message(self, message: str):
         self._message_host.content.value = message
         self._message_host.visible = True
