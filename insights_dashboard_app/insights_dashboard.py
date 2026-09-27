@@ -34,6 +34,7 @@ METRIC_CARD_HEIGHT = 140
 METRIC_GREEN = "#18D66B"
 METRIC_RED = "#FF4D4D"
 
+
 # Scenario assumptions for the replacement-economics model.
 # Gemini 3.8 Flash paid-tier token rates shown here are the
 # introductory rates through 2026-12-31. Other cost inputs are
@@ -325,9 +326,11 @@ def build_occupation_row(
         occupation_chips_by_code[occupation["code"]] = chip
 
     occupation_list = ft.ListView(
+        expand=True,
         horizontal=True,
         height=46,
         spacing=10,
+        build_controls_on_demand=False,
         scroll=ft.Scrollbar(
             thickness=0,
             interactive=False,
@@ -336,11 +339,54 @@ def build_occupation_row(
         ),
         controls=occupation_chips,
     )
+
+    async def scroll_occupations_left(_):
+        await occupation_list.scroll_to(
+            delta=-320,
+            duration=250,
+            curve=ft.AnimationCurve.EASE_OUT,
+        )
+
+    async def scroll_occupations_right(_):
+        await occupation_list.scroll_to(
+            delta=320,
+            duration=250,
+            curve=ft.AnimationCurve.EASE_OUT,
+        )
+
+    left_arrow = ft.IconButton(
+        icon=ft.Icons.CHEVRON_LEFT,
+        icon_color=CHIP_TEXT,
+        icon_size=22,
+        width=34,
+        height=46,
+        padding=0,
+        on_click=scroll_occupations_left,
+    )
+    right_arrow = ft.IconButton(
+        icon=ft.Icons.CHEVRON_RIGHT,
+        icon_color=CHIP_TEXT,
+        icon_size=22,
+        width=34,
+        height=46,
+        padding=0,
+        on_click=scroll_occupations_right,
+    )
+
     occupation_row = ft.Container(
         height=62,
         padding=ft.Padding.symmetric(horizontal=PAGE_PADDING),
         alignment=ft.Alignment.CENTER,
-        content=occupation_list,
+        content=ft.Row(
+            height=46,
+            spacing=4,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            controls=[
+                left_arrow,
+                occupation_list,
+                right_arrow,
+            ],
+        ),
     )
 
     async def replace_occupation_chip(
@@ -723,10 +769,10 @@ async def main(page: ft.Page):
         padding=ft.Padding.only(left=16, right=16),
         alignment=ft.Alignment.CENTER_LEFT,
         content=ft.Text(
-            "Career Insights Dashboard",
+            "ΛIM ",
             size=18,
             weight=ft.FontWeight.W_600,
-            color=PRIMARY_TEXT,
+            color=ft.Colors.WHITE,
         ),
     )
 

@@ -171,7 +171,7 @@ class QuadrantRiskCard(ft.Container):
 
                 (
                     ft.Text(
-                        "AI Risk",
+                        "AI Exposure",
 
                         size=18,
 
@@ -670,7 +670,7 @@ class QuadrantRiskCard(ft.Container):
                     self._gauge_canvas,
 
                     # =================================================
-                    # RISK SCORE LABEL
+                    # EXPOSURE SCORE LABEL
                     # =================================================
 
                     ft.Container(
@@ -683,7 +683,7 @@ class QuadrantRiskCard(ft.Container):
 
                         content=ft.Text(
 
-                            "Risk Score",
+                            "Exposure Score",
 
                             size=13,
 
