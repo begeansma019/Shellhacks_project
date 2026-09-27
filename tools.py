@@ -1,4 +1,4 @@
-"""Tools for WorkLens: integrates Microsoft Working-with-AI and Anthropic Economic Index."""
+"""Tools for WorkLens using the Microsoft Working-with-AI dataset."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 
 MS_DATASET_PATH = os.path.join(os.path.dirname(__file__), "ai_applicability_scores.csv")
-ANTHROPIC_DATASET_PATH = os.path.join(os.path.dirname(__file__), "aei_1p_api_2026-06-26.csv")
 
 
 def _load_csv(path: str) -> pd.DataFrame:
@@ -22,7 +21,6 @@ def _load_csv(path: str) -> pd.DataFrame:
 
 
 _MS_DF = _load_csv(MS_DATASET_PATH)
-_ANTHROPIC_DF = _load_csv(ANTHROPIC_DATASET_PATH)
 
 DEFAULT_TASK_CATALOG: Dict[str, List[Dict[str, Any]]] = {
     "software engineer": [
@@ -87,26 +85,6 @@ def get_microsoft_score(job_title: str) -> float:
                 score = raw * 100 if raw <= 1.0 else raw
                 return round(score, 1)
     return 55.0
-
-
-def get_anthropic_metrics(job_title: str) -> Dict[str, str]:
-    """Extracts occupational exposure mode from the Anthropic Economic Index."""
-    if not _ANTHROPIC_DF.empty:
-        title_col = next((c for c in _ANTHROPIC_DF.columns if any(k in c.lower() for k in ["occupation", "soc", "title"])), None)
-        if title_col:
-            q = job_title.strip().lower()
-            match = _ANTHROPIC_DF[_ANTHROPIC_DF[title_col].astype(str).str.lower().str.contains(q, regex=False)]
-            if not match.empty:
-                row = match.iloc[0]
-                exposure = row.get("relative_exposure", row.get("usage_index", "High"))
-                interaction = row.get("primary_mode", "Augmentation (Copilot)")
-                return {"exposure_intensity": str(exposure), "interaction_mode": str(interaction)}
-
-    # Standard fallback according to Anthropic Index findings
-    return {
-        "exposure_intensity": "Top 15% (High Claude interaction density)",
-        "interaction_mode": "Augmentation-heavy (Direct human steering with multi-turn prompt refinement)",
-    }
 
 
 def analyze_job_tasks(job_title: str) -> List[Dict[str, Any]]:
