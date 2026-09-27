@@ -29,6 +29,29 @@ class SkillsMapCard(ft.Container):
         self._message_host = message_host
         self.skills: list[dict[str, object]] = []
 
+    @staticmethod
+    def _format_skill_title(name: object) -> str:
+        title = str(name).strip()
+        if len(title) <= 18:
+            return title
+
+        words = title.split()
+        if len(words) < 2:
+            return title
+
+        split_index = min(
+            range(1, len(words)),
+            key=lambda index: max(
+                len(" ".join(words[:index])),
+                len(" ".join(words[index:])),
+            ),
+        )
+        return (
+            " ".join(words[:split_index])
+            + "\n"
+            + " ".join(words[split_index:])
+        )
+
     def set_skills(self, skills: list[dict[str, object]]):
         self.skills = list(skills[:6])
         if not self.skills:
@@ -55,10 +78,10 @@ class SkillsMapCard(ft.Container):
         ]
         self._radar_chart.titles = [
             fch.RadarChartTitle(
-                text=f"{index}. {skill['name']}",
+                text=self._format_skill_title(skill["name"]),
                 angle=360,
             )
-            for index, skill in enumerate(self.skills, start=1)
+            for skill in self.skills
         ]
         self._radar_chart.visible = True
         self._message_host.visible = False
@@ -116,7 +139,7 @@ def main(page: ft.Page):
             color=MUTED,
             weight=ft.FontWeight.W_500,
         ),
-        title_position_percentage_offset=0.30,
+        title_position_percentage_offset=0.12,
         ticks_text_style=ft.TextStyle(
             size=7,
             color="#353535",
