@@ -4,6 +4,12 @@ from insights_dashboard import DEFAULT_OCCUPATIONS
 
 
 class DefaultOccupationTests(unittest.TestCase):
+    def test_software_developers_is_startup_default(self):
+        self.assertEqual(
+            DEFAULT_OCCUPATIONS[0],
+            {"code": "15-1252.00", "title": "Software Developers"},
+        )
+
     def test_default_occupations_match_requested_order_and_codes(self):
         self.assertEqual(
             DEFAULT_OCCUPATIONS,

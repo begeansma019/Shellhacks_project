@@ -622,6 +622,8 @@ async def main(page: ft.Page):
         market_card.initialize_value_reel(),
     )
 
+    await select_occupation(DEFAULT_OCCUPATIONS[0])
+
 
 if __name__ == "__main__":
     ft.run(main,view=ft.AppView.WEB_BROWSER)
