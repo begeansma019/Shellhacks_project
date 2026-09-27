@@ -1,4 +1,5 @@
 import math
+from pathlib import Path
 
 import flet as ft
 import flet_charts as fch
@@ -20,6 +21,10 @@ GRID = "#1E1E20"
 
 GREEN = "#24D36B"
 WAGE_AXIS_INTERVAL = 5_000
+CHATGPT_RELEASE_LOGO = (
+    Path(__file__).with_name("assets")
+    / "chatgpt_release_logo.png"
+).read_bytes()
 
 
 def build_market_series(values):
@@ -134,20 +139,68 @@ def build_wage_axis(values, interval=None):
     )
 
 
+def build_chatgpt_release_label():
+    return ft.Column(
+        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+        spacing=2,
+        controls=[
+            ft.Text(
+                "2022",
+                size=9,
+                color=MUTED,
+            ),
+            ft.Container(
+                width=22,
+                height=22,
+                border_radius=11,
+                alignment=ft.Alignment.CENTER,
+                bgcolor=ft.Colors.WHITE,
+                border=ft.Border.all(
+                    width=1,
+                    color="#D8D8D8",
+                ),
+                content=ft.Image(
+                    src=CHATGPT_RELEASE_LOGO,
+                    width=14,
+                    height=14,
+                    fit=ft.BoxFit.CONTAIN,
+                    anti_alias=True,
+                ),
+            ),
+            ft.Text(
+                "ChatGPT\nreleased",
+                size=8,
+                color=MUTED,
+                text_align=ft.TextAlign.CENTER,
+                no_wrap=False,
+            ),
+        ],
+    )
+
+
 def build_timeline_axis(years):
-    return fch.ChartAxis(
-        label_size=30,
-        labels=[
+    labels = []
+
+    for index, year in enumerate(years):
+        if year == 2022:
+            label = build_chatgpt_release_label()
+        else:
+            label = ft.Text(
+                str(year),
+                size=9,
+                color=MUTED,
+            )
+
+        labels.append(
             fch.ChartAxisLabel(
                 value=index,
-                label=ft.Text(
-                    str(year),
-                    size=9,
-                    color=MUTED,
-                ),
+                label=label,
             )
-            for index, year in enumerate(years)
-        ],
+        )
+
+    return fch.ChartAxis(
+        label_size=72,
+        labels=labels,
     )
 
 
