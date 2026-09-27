@@ -325,6 +325,11 @@ def build_occupation_row(
         occupation_chips.append(chip)
         occupation_chips_by_code[occupation["code"]] = chip
 
+    selected_occupation_chip = occupation_chips_by_code[
+        DEFAULT_OCCUPATIONS[0]["code"]
+    ]
+    apply_selected_chip_style(selected_occupation_chip)
+
     occupation_list = ft.ListView(
         expand=True,
         horizontal=True,
