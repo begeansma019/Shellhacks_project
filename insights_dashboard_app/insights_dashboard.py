@@ -151,6 +151,11 @@ def build_occupation_row(
             color=color,
             weight=ft.FontWeight.W_500,
             no_wrap=True,
+            offset=ft.Offset(0, 0),
+            animate_offset=ft.Animation(
+                duration=240,
+                curve=ft.AnimationCurve.EASE_OUT,
+            ),
         )
 
     def apply_selected_chip_style(selected_chip: ft.Container):
@@ -272,6 +277,7 @@ def build_occupation_row(
                 width=1,
                 color=CHIP_BORDER,
             ),
+            clip_behavior=ft.ClipBehavior.HARD_EDGE,
             data=dict(occupation),
             content=create_occupation_label(occupation["title"]),
             animate=ft.Animation(
@@ -282,10 +288,11 @@ def build_occupation_row(
 
         async def handle_occupation_click(
             event,
-            record=dict(occupation),
             control=chip,
         ):
-            await select_occupation(record, control)
+            record = control.data
+            if isinstance(record, dict):
+                await select_occupation(dict(record), control)
 
         chip.on_click = handle_occupation_click
         return chip
@@ -314,6 +321,40 @@ def build_occupation_row(
         content=occupation_list,
     )
 
+    async def replace_occupation_chip(
+        chip: ft.Container,
+        occupation: dict[str, str],
+    ):
+        label = chip.content
+        label.offset = ft.Offset(0, -3)
+        page.update(label)
+        await asyncio.sleep(0.24)
+
+        previous_record = chip.data
+        previous_code = (
+            previous_record.get("code")
+            if isinstance(previous_record, dict)
+            else None
+        )
+        if occupation_chips_by_code.get(previous_code) is chip:
+            occupation_chips_by_code.pop(previous_code)
+
+        label.animate_offset = None
+        label.offset = ft.Offset(0, 3)
+        chip.data = dict(occupation)
+        label.value = occupation["title"]
+        page.update(label)
+        await asyncio.sleep(0.02)
+
+        label.animate_offset = ft.Animation(
+            duration=240,
+            curve=ft.AnimationCurve.EASE_OUT,
+        )
+        label.offset = ft.Offset(0, 0)
+        occupation_chips_by_code[occupation["code"]] = chip
+        page.update(label)
+        await asyncio.sleep(0.24)
+
     async def select_occupation_record(
         occupation: dict[str, str],
     ):
@@ -325,10 +366,14 @@ def build_occupation_row(
         record = {"code": code, "title": title}
         selected_chip = occupation_chips_by_code.get(code)
         if selected_chip is None:
-            selected_chip = create_occupation_chip(record)
-            occupation_chips.append(selected_chip)
-            occupation_chips_by_code[code] = selected_chip
-            page.update(occupation_list)
+            selected_chip = (
+                selected_occupation_chip
+                or occupation_chips[0]
+            )
+            await replace_occupation_chip(
+                selected_chip,
+                record,
+            )
 
         await select_occupation(record, selected_chip)
 
