@@ -1,5 +1,4 @@
 import math
-from importlib import import_module
 
 import flet as ft
 import flet_charts as fch
@@ -21,20 +20,16 @@ GRID = "#1E1E20"
 
 GREEN = "#24D36B"
 WAGE_AXIS_INTERVAL = 5_000
-OUTLOOK_AXIS_INTERVAL = 2
-
-METRIC_WAGE = "city"
-METRIC_OUTLOOK = "state"
 
 
-def build_market_series(values, metric_key=METRIC_WAGE):
+def build_market_series(values):
     return fch.LineChartData(
         points=[
             fch.LineChartDataPoint(
                 index,
                 value,
                 tooltip=fch.LineChartDataPointTooltip(
-                    text=format_current_value(metric_key, value),
+                    text=format_current_value(value),
                     text_style=ft.TextStyle(
                         color=ft.Colors.WHITE,
                     ),
@@ -68,21 +63,16 @@ def build_market_series(values, metric_key=METRIC_WAGE):
     )
 
 
-def metric_axis_interval(metric_key, values):
-    base_interval = {
-        METRIC_WAGE: WAGE_AXIS_INTERVAL,
-        METRIC_OUTLOOK: OUTLOOK_AXIS_INTERVAL,
-    }[metric_key]
-
+def wage_axis_interval(values):
     if len(values) < 2:
-        return base_interval
+        return WAGE_AXIS_INTERVAL
 
     span = max(values) - min(values)
     target_interval = span / 4
-    if target_interval <= base_interval:
-        return base_interval
+    if target_interval <= WAGE_AXIS_INTERVAL:
+        return WAGE_AXIS_INTERVAL
 
-    multiplier = target_interval / base_interval
+    multiplier = target_interval / WAGE_AXIS_INTERVAL
     magnitude = 10 ** math.floor(math.log10(multiplier))
     normalized = multiplier / magnitude
     nice_multiplier = next(
@@ -90,16 +80,13 @@ def metric_axis_interval(metric_key, values):
         for candidate in (1, 2, 5, 10)
         if normalized <= candidate
     )
-    return base_interval * nice_multiplier * magnitude
+    return WAGE_AXIS_INTERVAL * nice_multiplier * magnitude
 
 
-def metric_axis_values(metric_key, values):
-    interval = metric_axis_interval(metric_key, values)
+def wage_axis_values(values):
+    interval = wage_axis_interval(values)
     minimum_value = math.floor(min(values) / interval) * interval
     maximum_value = math.ceil(max(values) / interval) * interval
-
-    if metric_key != METRIC_WAGE:
-        minimum_value = max(0, minimum_value)
 
     interval_count = round(
         (maximum_value - minimum_value) / interval
@@ -108,21 +95,7 @@ def metric_axis_values(metric_key, values):
     lower_intervals = missing_intervals // 2
     upper_intervals = missing_intervals - lower_intervals
 
-    if metric_key == METRIC_WAGE:
-        minimum_value -= lower_intervals * interval
-    else:
-        available_lower_intervals = round(
-            minimum_value / interval
-        )
-        applied_lower_intervals = min(
-            lower_intervals,
-            available_lower_intervals,
-        )
-        minimum_value -= applied_lower_intervals * interval
-        upper_intervals += (
-            lower_intervals - applied_lower_intervals
-        )
-
+    minimum_value -= lower_intervals * interval
     maximum_value += upper_intervals * interval
     interval_count = round(
         (maximum_value - minimum_value) / interval
@@ -133,28 +106,17 @@ def metric_axis_values(metric_key, values):
     ]
 
 
-def format_axis_value(metric_key, value):
-    if metric_key == METRIC_WAGE:
-        return f"${round(value) // 1_000}K"
-    if metric_key == METRIC_OUTLOOK:
-        return f"{value:g}%"
-    return f"{value:g}"
+def format_axis_value(value):
+    return f"${round(value) // 1_000}K"
 
 
-def format_current_value(metric_key, value):
-    if metric_key == METRIC_WAGE:
-        return f"${value:,.0f}"
-    if metric_key == METRIC_OUTLOOK:
-        return f"{value:.1f}%"
-    return f"{value:g}"
+def format_current_value(value):
+    return f"${value:,.0f}"
 
 
-def build_metric_axis(metric_key, values, interval=None):
+def build_wage_axis(values, interval=None):
     if interval is None:
-        interval = {
-            METRIC_WAGE: WAGE_AXIS_INTERVAL,
-            METRIC_OUTLOOK: OUTLOOK_AXIS_INTERVAL,
-        }[metric_key]
+        interval = WAGE_AXIS_INTERVAL
     return fch.ChartAxis(
         label_size=40,
         label_spacing=interval,
@@ -162,7 +124,7 @@ def build_metric_axis(metric_key, values, interval=None):
             fch.ChartAxisLabel(
                 value=value,
                 label=ft.Text(
-                    format_axis_value(metric_key, value),
+                    format_axis_value(value),
                     size=10,
                     color=MUTED,
                 ),
@@ -195,9 +157,8 @@ class MarketTrendsCard(ft.Container):
         chart: fch.LineChart,
         current_value_text: ft.Text,
         current_value_holder: ft.Container,
-        trend_selector,
-        metric_values,
-        metric_years,
+        wage_values,
+        wage_years,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -205,17 +166,8 @@ class MarketTrendsCard(ft.Container):
         self._market_line = chart.data_series[0]
         self._current_value_text = current_value_text
         self._current_value_holder = current_value_holder
-        self._trend_selector = trend_selector
-        self._metric_values = {
-            key: list(values)
-            for key, values in metric_values.items()
-        }
-        self._metric_years = {
-            key: list(years)
-            for key, years in metric_years.items()
-        }
-        self._selected_metric_key = METRIC_WAGE
-        self._selector_page = None
+        self._wage_values = list(wage_values)
+        self._wage_years = list(wage_years)
         self._value_reel = None
         self._target_value_text = current_value_text.value
 
@@ -233,46 +185,14 @@ class MarketTrendsCard(ft.Container):
                 self._target_value_text
             )
 
-    def bind_metric_selector(self, page):
-        self._selector_page = page
-        self._trend_selector.on_location_change = (
-            self._handle_metric_selection
-        )
-
-    def _handle_metric_selection(self, metric_key):
-        if metric_key not in self._metric_values:
-            return
-
-        self._selected_metric_key = metric_key
-        self._apply_selected_metric()
-
-        if self._selector_page is None:
-            return
-
-        self._selector_page.update(self._chart)
-
-        if self._value_reel is not None:
-            async def animate_value():
-                await self.animate_current_value()
-
-            self._selector_page.run_task(animate_value)
-
-    def _apply_selected_metric(self):
-        values = self._metric_values[self._selected_metric_key]
-        years = self._metric_years[self._selected_metric_key]
-        self._market_line = build_market_series(
-            values,
-            self._selected_metric_key,
-        )
+    def _apply_wage_history(self):
+        self._market_line = build_market_series(self._wage_values)
         self._chart.data_series = [self._market_line]
 
-        if not values:
+        if not self._wage_values:
             self._chart.min_y = 0
             self._chart.max_y = 1
-            self._chart.left_axis = build_metric_axis(
-                self._selected_metric_key,
-                [],
-            )
+            self._chart.left_axis = build_wage_axis([])
             self._chart.min_x = 0
             self._chart.max_x = 1
             self._chart.bottom_axis = build_timeline_axis([])
@@ -281,34 +201,27 @@ class MarketTrendsCard(ft.Container):
                 self._current_value_text.value = "—"
             return
 
-        axis_values = metric_axis_values(
-            self._selected_metric_key,
-            values,
-        )
+        axis_values = wage_axis_values(self._wage_values)
         axis_interval = axis_values[1] - axis_values[0]
         axis_padding = axis_interval * 0.15
-        self._chart.min_y = (
-            axis_values[0] - axis_padding
-            if self._selected_metric_key == METRIC_WAGE
-            else max(0, axis_values[0] - axis_padding)
-        )
+        self._chart.min_y = axis_values[0] - axis_padding
         self._chart.max_y = axis_values[-1] + axis_padding
-        self._chart.left_axis = build_metric_axis(
-            self._selected_metric_key,
+        self._chart.left_axis = build_wage_axis(
             axis_values,
             axis_interval,
         )
         self._chart.min_x = 0
-        self._chart.max_x = len(values) - 1
-        self._chart.bottom_axis = build_timeline_axis(years)
+        self._chart.max_x = len(self._wage_values) - 1
+        self._chart.bottom_axis = build_timeline_axis(
+            self._wage_years
+        )
         self._chart.horizontal_grid_lines = fch.ChartGridLines(
             interval=axis_interval,
             width=1,
             color=GRID,
         )
         self._target_value_text = format_current_value(
-            self._selected_metric_key,
-            values[-1],
+            self._wage_values[-1],
         )
 
         if self._value_reel is None:
@@ -316,27 +229,16 @@ class MarketTrendsCard(ft.Container):
                 self._target_value_text
             )
 
-    def set_metric_values(self, metric_values):
-        for metric_key, values in metric_values.items():
-            if metric_key not in self._metric_values:
-                continue
-            self._metric_values[metric_key] = list(values)
-
-        self._apply_selected_metric()
-
-    def set_values(self, values):
-        self.set_metric_values({METRIC_WAGE: values})
-
     def set_wage_history(self, wage_history):
-        self._metric_years[METRIC_WAGE] = [
+        self._wage_years = [
             observation["year"]
             for observation in wage_history
         ]
-        self._metric_values[METRIC_WAGE] = [
+        self._wage_values = [
             observation["median_annual_wage"]
             for observation in wage_history
         ]
-        self._apply_selected_metric()
+        self._apply_wage_history()
 
 
 # =========================================================
@@ -358,23 +260,15 @@ def main(page: ft.Page):
     # MARKET DATA
     # =====================================================
 
-    market_values = []
-    outlook_values = [
-        5.8,
-        6.2,
-        6.5,
-        6.9,
-        7.4,
-        7.9,
-    ]
+    wage_values = []
+    wage_years = []
 
     # =====================================================
     # LINE SERIES
     # =====================================================
 
     market_line = build_market_series(
-        market_values,
-        METRIC_WAGE,
+        wage_values,
     )
     initial_axis_values = []
 
@@ -430,8 +324,7 @@ def main(page: ft.Page):
         # LEFT Y AXIS
         # =================================================
 
-        left_axis=build_metric_axis(
-            METRIC_WAGE,
+        left_axis=build_wage_axis(
             initial_axis_values,
         ),
 
@@ -491,30 +384,12 @@ def main(page: ft.Page):
     # HEADER
     # =====================================================
 
-    trend_selector_module = import_module("main (5)")
-    trend_selector = (
-        trend_selector_module.ExpandableLocationContainer(
-            location_name="Median Wage",
-            state_location="Outlook",
-            national_location="",
-        )
+    title = ft.Text(
+        "Median Wage",
+        size=16,
+        color=TEXT,
+        weight=ft.FontWeight.BOLD,
     )
-    trend_selector.locations = tuple(
-        option
-        for option in trend_selector.locations
-        if option.key != "national"
-    )
-    trend_selector.options_row.controls = [
-        trend_selector.option_containers[option.key]
-        for option in trend_selector.locations
-    ]
-    trend_selector.expanded_width = 300
-    trend_selector.TEXT_SIZE = 16
-    for option_text in trend_selector.option_text.values():
-        option_text.size = trend_selector.TEXT_SIZE
-        option_text.weight = ft.FontWeight.BOLD
-    trend_selector.offset = ft.Offset(0, -0.08)
-    trend_selector._sync(refresh=False)
 
     header = ft.Row(
 
@@ -523,7 +398,7 @@ def main(page: ft.Page):
 
         controls=[
 
-            trend_selector,
+            title,
 
             current_value_holder,
         ],
@@ -538,15 +413,8 @@ def main(page: ft.Page):
         chart=chart,
         current_value_text=current_value_text,
         current_value_holder=current_value_holder,
-        trend_selector=trend_selector,
-        metric_values={
-            METRIC_WAGE: market_values,
-            METRIC_OUTLOOK: outlook_values,
-        },
-        metric_years={
-            METRIC_WAGE: [],
-            METRIC_OUTLOOK: list(range(2024, 2035, 2)),
-        },
+        wage_values=wage_values,
+        wage_years=wage_years,
 
         width=980,
         height=590,
@@ -592,9 +460,6 @@ def main(page: ft.Page):
             ],
         ),
     )
-
-    if hasattr(page, "run_task"):
-        market_card.bind_metric_selector(page)
 
     # =====================================================
     # PAGE

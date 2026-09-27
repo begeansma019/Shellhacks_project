@@ -198,13 +198,6 @@ def build_occupation_row(
         skills_card.set_skills(occupation_data["skills"])
         wage_history = occupation_data["median_wages"]
         market_card.set_wage_history(wage_history)
-        market_card.set_metric_values(
-            {
-                "state": occupation_outlook_values(
-                    occupation_data["title"]
-                ),
-            }
-        )
         page.update()
 
         latest_median_wage = (
@@ -314,32 +307,6 @@ def build_occupation_row(
     return occupation_row, select_occupation_record
 
 
-def occupation_outlook_values(occupation: str):
-    digest = hashlib.sha256(
-        f"outlook-history:{occupation}".encode("utf-8")
-    ).digest()
-    final_value = 3.5 + digest[0] % 96 / 10
-    start_value = final_value - (
-        0.8 + digest[1] % 15 / 10
-    )
-    values = []
-
-    for year_index in range(6):
-        progress = year_index / 5
-        trend_value = (
-            start_value
-            + (final_value - start_value) * progress
-        )
-        noise = (
-            0
-            if year_index in (0, 5)
-            else (digest[year_index + 2] % 5 - 2) * 0.1
-        )
-        values.append(round(trend_value + noise, 1))
-
-    return values
-
-
 def occupation_economics_values(
     occupation: str,
     labor_value: int | None,
@@ -406,7 +373,6 @@ def build_market_card(page: ft.Page):
         font_weight=ft.FontWeight.NORMAL,
     )
     market_card.attach_value_reel(wage_reel)
-    market_card.bind_metric_selector(page)
     return market_card
 
 
